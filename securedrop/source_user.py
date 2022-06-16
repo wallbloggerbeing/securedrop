@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.kdf import scrypt
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import redwood
+
 if TYPE_CHECKING:
     from passphrases import DicewarePassphrase
     from store import Storage
@@ -98,9 +100,18 @@ def create_source_user(
         # Could not generate a designation that is not already used
         raise SourceDesignationCollisionError()
 
+    # Generate PGP keys
+    public_key, private_key, fingerprint = redwood.generate_source_key_pair(
+        gpg_secret, filesystem_id
+    )
+
     # Store the source in the DB
     source_db_record = models.Source(
-        filesystem_id=filesystem_id, journalist_designation=valid_designation
+        filesystem_id=filesystem_id,
+        journalist_designation=valid_designation,
+        public_key=public_key,
+        private_key=private_key,
+        fingerprint=fingerprint,
     )
     db_session.add(source_db_record)
     try:

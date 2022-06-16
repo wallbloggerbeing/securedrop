@@ -16,7 +16,6 @@ import qrcode.image.svg
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.kdf import scrypt
 from db import db
-from encryption import EncryptionManager, GpgKeyNotFoundError
 from flask import current_app, url_for
 from flask_babel import gettext, ngettext
 from itsdangerous import BadData, TimedJSONWebSignatureSerializer
@@ -24,7 +23,7 @@ from markupsafe import Markup
 from passlib.hash import argon2
 from passphrases import PassphraseGenerator
 from pyotp import HOTP, TOTP
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, backref, relationship
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
@@ -84,9 +83,24 @@ class Source(db.Model):
     # when deletion of the source was requested
     deleted_at = Column(DateTime)
 
-    def __init__(self, filesystem_id: str, journalist_designation: str) -> None:
+    # PGP key material
+    public_key = Column(Text, nullable=True)
+    private_key = Column(Text, nullable=True)
+    fingerprint = Column(String(40), nullable=True)
+
+    def __init__(
+        self,
+        filesystem_id: str,
+        journalist_designation: str,
+        public_key: str,
+        private_key: str,
+        fingerprint: str,
+    ) -> None:
         self.filesystem_id = filesystem_id
         self.journalist_designation = journalist_designation
+        self.public_key = public_key
+        self.private_key = private_key
+        self.fingerprint = fingerprint
         self.uuid = str(uuid.uuid4())
 
     def __repr__(self) -> str:
@@ -118,20 +132,6 @@ class Source(db.Model):
         collection.sort(key=lambda x: int(x.filename.split("-")[0]))
         return collection
 
-    @property
-    def fingerprint(self) -> "Optional[str]":
-        try:
-            return EncryptionManager.get_default().get_source_key_fingerprint(self.filesystem_id)
-        except GpgKeyNotFoundError:
-            return None
-
-    @property
-    def public_key(self) -> "Optional[str]":
-        try:
-            return EncryptionManager.get_default().get_source_public_key(self.filesystem_id)
-        except GpgKeyNotFoundError:
-            return None
-
     def to_json(self) -> "Dict[str, object]":
         docs_msg_count = self.documents_messages_count()
 
@@ -153,7 +153,11 @@ class Source(db.Model):
             "is_starred": starred,
             "last_updated": last_updated,
             "interaction_count": self.interaction_count,
-            "key": {"type": "PGP", "public": self.public_key, "fingerprint": self.fingerprint},
+            "key": {
+                "type": "PGP",
+                "public": self.public_key,
+                "fingerprint": self.fingerprint,
+            },
             "number_of_documents": docs_msg_count["documents"],
             "number_of_messages": docs_msg_count["messages"],
             "submissions_url": url_for("api.all_source_submissions", source_uuid=self.uuid),
