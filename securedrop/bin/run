@@ -13,6 +13,7 @@ source "${BASH_SOURCE%/*}/dev-deps"
 run_redis &
 urandom
 run_sass --watch &
+build_redwood
 maybe_create_config_py
 reset_demo
 maybe_use_tor
