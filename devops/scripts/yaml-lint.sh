@@ -10,6 +10,7 @@
 find . -path "*/.venv*" -prune -o \
                  -path "*admin/.tox" -prune -o \
                  -path "**/.molecule" -prune -o \
+                 -path "./target/*" -prune -o \
                  -type f | \
         grep -E '^.*\.ya?ml' | \
         xargs yamllint -c ".yamllint"
